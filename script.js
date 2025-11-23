@@ -11,8 +11,10 @@ const MAX_VOICES = 8;
 
 // MIDI State
 let midiAccess = null;
-let midiInput = null;
+let midiInput = null; // Notes Input
+let midiCCInput = null; // CC Input
 let selectedMidiDevice = "-1";
+let selectedMidiCCDevice = "-1";
 let selectedMidiChannel = -1; // -1 = Omni
 
 // Default Settings
@@ -24,18 +26,21 @@ const defaultSettings = {
     osc1_octave: 0,
     osc1_semi: 0,
     osc1_detune: 0,
+    osc1_pan: 0,
     osc1_gain: 0.5,
     // Osc 2
     osc2_waveform: 2,
     osc2_octave: 0,
     osc2_semi: 0,
     osc2_detune: 0,
+    osc2_pan: 0,
     osc2_gain: 0.5,
     // Osc 3
     osc3_waveform: 2,
     osc3_octave: -1,
     osc3_semi: 0,
     osc3_detune: 0,
+    osc3_pan: 0,
     osc3_gain: 0.5,
     // Filter
     filterType: 'lowpass',
@@ -68,12 +73,13 @@ class SynthVoice {
         this.ctx = ctx;
         this.dest = dest;
         this.oscillators = [];
+        this.oscPans = []; // Pan nodes per osc
         this.filter = null;
         this.ampEnv = null;
-        this.pan = null;
+        this.masterPan = null; // Voice-level pan (Master Pan)
         this.tremolo = { osc: null, gain: null };
         this.active = false;
-        this.note = null; // MIDI note number
+        this.note = null; 
     }
 
     trigger(freq, noteNum) {
@@ -81,20 +87,15 @@ class SynthVoice {
         this.active = true;
         const now = this.ctx.currentTime;
 
-        // 1. Create Graph
-        // Master -> Pan -> Tremolo -> Amp -> Filter -> Mixer -> Oscs
-        // Reverse connection logic
+        // 1. Create Graph Chain
+        // Master <- MasterPan <- Tremolo <- Amp <- Filter <- [ (Osc->Gain->Pan) ... ]
         
-        // Amp (VCA)
-        this.ampEnv = this.ctx.createGain();
-        this.ampEnv.gain.value = 0;
-
-        // Pan
+        // Master Pan
         if (this.ctx.createStereoPanner) {
-            this.pan = this.ctx.createStereoPanner();
-            this.pan.pan.value = settings.pan;
+            this.masterPan = this.ctx.createStereoPanner();
+            this.masterPan.pan.value = settings.pan;
         } else {
-            this.pan = this.ctx.createGain(); 
+            this.masterPan = this.ctx.createGain(); 
         }
 
         // Tremolo
@@ -111,23 +112,38 @@ class SynthVoice {
         tremOsc.start(now);
         this.tremolo = { osc: tremOsc, gain: tremGain };
 
+        // Amp (VCA)
+        this.ampEnv = this.ctx.createGain();
+        this.ampEnv.gain.value = 0;
+
         // Filter
         this.filter = this.ctx.createBiquadFilter();
         this.filter.type = settings.filterType;
         this.filter.frequency.value = settings.filterFreq;
         this.filter.Q.value = settings.filterQ;
 
-        // Connect Chain
+        // Chain Construction
         this.filter.connect(this.ampEnv);
         this.ampEnv.connect(tremGain);
-        tremGain.connect(this.pan);
-        this.pan.connect(this.dest); // Connect to Main Mix
+        tremGain.connect(this.masterPan);
+        this.masterPan.connect(this.dest);
 
         // Oscillators
         this.oscillators = [];
+        this.oscPans = [];
+        
         for (let i = 1; i <= 3; i++) {
             const osc = this.ctx.createOscillator();
             const gain = this.ctx.createGain();
+            let panNode;
+
+            // Per-Osc Pan
+            if (this.ctx.createStereoPanner) {
+                panNode = this.ctx.createStereoPanner();
+                panNode.pan.value = settings[`osc${i}_pan`];
+            } else {
+                panNode = this.ctx.createGain();
+            }
             
             osc.type = waveforms[settings[`osc${i}_waveform`]];
             osc.frequency.value = freq;
@@ -140,11 +156,15 @@ class SynthVoice {
             osc.detune.value = totalCents;
             gain.gain.value = settings[`osc${i}_gain`];
             
+            // Connection: Osc -> Gain -> Pan -> Filter
             osc.connect(gain);
-            gain.connect(this.filter);
+            gain.connect(panNode);
+            panNode.connect(this.filter);
+            
             osc.start(now);
             
             this.oscillators.push(osc);
+            this.oscPans.push(panNode);
         }
 
         // Envelopes
@@ -179,37 +199,33 @@ class SynthVoice {
         const r = Math.max(0.001, settings.release);
         const fr = Math.max(0.001, settings.f_release);
 
-        // Amp Release
         if (this.ampEnv) {
             this.ampEnv.gain.cancelScheduledValues(now);
             this.ampEnv.gain.setValueAtTime(this.ampEnv.gain.value, now);
             this.ampEnv.gain.linearRampToValueAtTime(0, now + r);
         }
 
-        // Filter Release
         if (this.filter) {
             this.filter.frequency.cancelScheduledValues(now);
             this.filter.frequency.setValueAtTime(this.filter.frequency.value, now);
             this.filter.frequency.linearRampToValueAtTime(settings.filterFreq, now + fr);
         }
 
-        // Stop Oscs
         const stopTime = now + r + 0.1;
         this.oscillators.forEach(osc => osc.stop(stopTime));
         if (this.tremolo.osc) this.tremolo.osc.stop(stopTime);
 
-        // Cleanup
         setTimeout(() => {
             this.disconnect();
         }, (r + 0.2) * 1000);
     }
 
     disconnect() {
-        // Cleanup nodes
         this.oscillators.forEach(o => { try { o.disconnect(); } catch(e){} });
+        this.oscPans.forEach(p => { try { p.disconnect(); } catch(e){} });
         if (this.filter) { try { this.filter.disconnect(); } catch(e){} }
         if (this.ampEnv) { try { this.ampEnv.disconnect(); } catch(e){} }
-        if (this.pan) { try { this.pan.disconnect(); } catch(e){} }
+        if (this.masterPan) { try { this.masterPan.disconnect(); } catch(e){} }
         if (this.tremolo.osc) { try { this.tremolo.osc.disconnect(); } catch(e){} }
         if (this.tremolo.gain) { try { this.tremolo.gain.disconnect(); } catch(e){} }
         this.note = null;
@@ -219,24 +235,21 @@ class SynthVoice {
         if (!this.active) return;
         const now = this.ctx.currentTime;
         
-        // Simplified live tweaking for performance
-        if (param === 'filterFreq' && this.filter) {
-             // Only update if envelope isn't dominant? Hard to say.
-             // Let's just target.
-             this.filter.frequency.setTargetAtTime(value, now, 0.1);
-        }
-        if (param === 'filterQ' && this.filter) {
-             this.filter.Q.setTargetAtTime(value, now, 0.1);
-        }
-        if (param === 'tremRate' && this.tremolo.osc) {
-             this.tremolo.osc.frequency.setTargetAtTime(value, now, 0.1);
+        if (param === 'filterFreq' && this.filter) this.filter.frequency.setTargetAtTime(value, now, 0.1);
+        if (param === 'filterQ' && this.filter) this.filter.Q.setTargetAtTime(value, now, 0.1);
+        if (param === 'tremRate' && this.tremolo.osc) this.tremolo.osc.frequency.setTargetAtTime(value, now, 0.1);
+        // Note: Master pan update logic handled in global param updater for voices?
+        // Actually, SynthVoice stores individual pan nodes so we might need to update them too if we want per-voice live pan tweaking.
+        // But 'pan' (master pan) is applied via this.masterPan
+        if (param === 'pan' && this.masterPan && this.masterPan.pan) {
+             this.masterPan.pan.setTargetAtTime(value, now, 0.1);
         }
     }
 }
 
 // Global Audio State
 let masterGainNode = null;
-let activeVoices = new Map(); // Key: noteNum, Value: SynthVoice instance
+let activeVoices = new Map();
 
 // UI State
 const uiElements = {};
@@ -271,6 +284,7 @@ for (let i = 1; i <= 3; i++) {
     paramMap[`osc${i}_octave`] = { min: -2, max: 2, step: 1, type: 'dial' };
     paramMap[`osc${i}_semi`] = { min: -12, max: 12, step: 1, type: 'dial' };
     paramMap[`osc${i}_detune`] = { min: -50, max: 50, step: 1, type: 'dial' };
+    paramMap[`osc${i}_pan`] = { min: -1, max: 1, step: 0.05, type: 'dial' };
     paramMap[`osc${i}_gain`] = { min: 0, max: 1, step: 0.01, type: 'dial' };
 }
 
@@ -281,15 +295,14 @@ document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
     
     document.body.addEventListener('click', () => {
-        if (audioCtx && audioCtx.state === 'suspended') {
-            audioCtx.resume();
-        }
+        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
     }, { once: true });
 });
 
 function initAudio() {
     if (!audioCtx) {
-        audioCtx = new AudioContext();
+        // Low latency hint
+        audioCtx = new AudioContext({ latencyHint: 'interactive' });
         masterGainNode = audioCtx.createGain();
         masterGainNode.connect(audioCtx.destination);
         masterGainNode.gain.value = settings.volume;
@@ -320,90 +333,186 @@ function onMIDIFailure(msg) {
 
 function updateMidiDevices() {
     const inputs = midiAccess.inputs;
-    const select = document.getElementById('midi-device');
+    const selectNote = document.getElementById('midi-device');
+    const selectCC = document.getElementById('midi-cc-device');
     
-    // Save current selection
-    const current = select.value;
+    const currentNote = selectNote.value;
+    const currentCC = selectCC.value;
     
-    select.innerHTML = '<option value="-1">No MIDI Device</option>';
+    const opts = '<option value="-1">No Device</option>';
+    selectNote.innerHTML = opts;
+    selectCC.innerHTML = opts;
     
     for (let input of inputs.values()) {
-        const opt = document.createElement('option');
-        opt.value = input.id;
-        opt.text = input.name;
-        select.appendChild(opt);
+        const opt1 = document.createElement('option');
+        opt1.value = input.id;
+        opt1.text = input.name;
+        selectNote.appendChild(opt1);
+
+        const opt2 = document.createElement('option');
+        opt2.value = input.id;
+        opt2.text = input.name;
+        selectCC.appendChild(opt2);
     }
     
-    // Restore selection if still valid
-    if (Array.from(select.options).some(opt => opt.value === current)) {
-        select.value = current;
-    } else if (inputs.size > 0) {
-        // Auto select first device if none selected
-        select.selectedIndex = 1; 
-        selectMidiDevice(select.value);
+    if (Array.from(selectNote.options).some(opt => opt.value === currentNote)) selectNote.value = currentNote;
+    if (Array.from(selectCC.options).some(opt => opt.value === currentCC)) selectCC.value = currentCC;
+}
+
+function selectMidiDevice(id, type) {
+    const inputs = midiAccess.inputs;
+    let input = null;
+    
+    if (id !== "-1") {
+        for (let i of inputs.values()) {
+            if (i.id === id) { input = i; break; }
+        }
+    }
+
+    if (type === 'note') {
+        midiInput = input;
+        selectedMidiDevice = id;
+        setupMidiRouting();
+    } else {
+        midiCCInput = input;
+        selectedMidiCCDevice = id;
+        setupMidiRouting();
     }
 }
 
-function selectMidiDevice(id) {
-    // Unhook old
-    if (midiInput) {
-        midiInput.onmidimessage = null;
+function setupMidiRouting() {
+    if (midiAccess) {
+        for (let input of midiAccess.inputs.values()) {
+            input.onmidimessage = null;
+        }
     }
+
+    // Router
+    if (midiInput && midiCCInput && midiInput.id === midiCCInput.id) {
+        midiInput.onmidimessage = (e) => {
+            handleNoteMsg(e);
+            handleCCMsg(e);
+        };
+    } else {
+        if (midiInput) midiInput.onmidimessage = handleNoteMsg;
+        if (midiCCInput) midiCCInput.onmidimessage = handleCCMsg;
+    }
+}
+
+function handleNoteMsg(event) {
+    const [status, data1, data2] = event.data;
     
-    if (id === "-1") {
-        midiInput = null;
-        selectedMidiDevice = "-1";
+    // Realtime Clock
+    if (status === 0xF8) {
+        handleMidiClock();
+        return;
+    }
+    if (status === 0xFA) { 
+        if (settings.arpEnabled && !isPlaying) startNoteSequence();
+        return;
+    }
+    if (status === 0xFC) { 
+        if (settings.arpEnabled && isPlaying) stopNoteSequence();
         return;
     }
 
-    const inputs = midiAccess.inputs;
-    for (let input of inputs.values()) {
-        if (input.id === id) {
-            midiInput = input;
-            midiInput.onmidimessage = onMidiMessage;
-            selectedMidiDevice = id;
-            break;
-        }
-    }
-}
-
-function onMidiMessage(event) {
-    const [status, data1, data2] = event.data;
     const command = status & 0xf0;
     const channel = status & 0x0f;
-    
-    // Filter Channel
     if (selectedMidiChannel !== -1 && channel !== selectedMidiChannel) return;
     
     if (command === 144) { // Note On
-        if (data2 > 0) {
-            noteOn(data1, data2);
-        } else {
-            noteOff(data1);
-        }
+        if (data2 > 0) noteOn(data1, data2);
+        else noteOff(data1);
     } else if (command === 128) { // Note Off
         noteOff(data1);
     }
 }
 
+// MIDI Clock State
+let clockTickCount = 0;
+let lastClockTime = 0;
+
+function handleMidiClock() {
+    if (!settings.arpEnabled || !isPlaying) return;
+    
+    // 24 ticks per quarter note
+    clockTickCount++;
+    
+    if (clockTickCount >= 12) { // 8th notes
+        clockTickCount = 0;
+        
+        if (arpInterval) {
+            clearInterval(arpInterval);
+            arpInterval = null;
+        }
+        
+        if (lastArpNote) noteOff(lastArpNote);
+        playArpStep();
+    }
+}
+
+function handleCCMsg(event) {
+    const [status, ccNum, val] = event.data;
+    const command = status & 0xf0;
+    const channel = status & 0x0f;
+    if (selectedMidiChannel !== -1 && channel !== selectedMidiChannel) return;
+
+    if (command === 176) { // CC
+        mapCC(ccNum, val);
+    }
+}
+
+function mapCC(cc, val) {
+    const norm = val / 127;
+    let param = null;
+    let mappedVal = null;
+
+    switch(cc) {
+        case 1: param = 'filterFreq'; mappedVal = 20 * Math.pow(1000, norm); break;
+        case 2: param = 'filterQ'; mappedVal = norm * 20; break;
+        case 3: param = 'tremRate'; mappedVal = 0.1 + (norm * 19.9); break;
+        case 4: param = 'tremDepth'; mappedVal = norm; break;
+        case 5: param = 'attack'; mappedVal = norm * 2; break;
+        case 6: param = 'decay'; mappedVal = norm * 2; break;
+        case 7: param = 'sustain'; mappedVal = norm; break;
+        case 8: param = 'release'; mappedVal = norm * 3; break;
+        case 9: param = 'f_attack'; mappedVal = norm * 2; break;
+        case 10: param = 'f_decay'; mappedVal = norm * 2; break;
+        case 11: param = 'f_sustain'; mappedVal = norm; break;
+        case 12: param = 'f_release'; mappedVal = norm * 3; break;
+        case 13: param = 'osc1_semi'; mappedVal = Math.round((norm * 24) - 12); break;
+        case 14: param = 'osc2_semi'; mappedVal = Math.round((norm * 24) - 12); break;
+        case 15: param = 'osc3_semi'; mappedVal = Math.round((norm * 24) - 12); break;
+        case 16: param = 'pan'; mappedVal = (norm * 2) - 1; break;
+    }
+
+    if (param !== null) {
+        settings[param] = mappedVal;
+        const el = uiElements[param];
+        if (el) {
+            if (el.type === 'checkbox') el.checked = mappedVal;
+            else {
+                updateDialVisual(el, mappedVal);
+                el.value = mappedVal;
+            }
+        }
+        updateValueDisplay(param, mappedVal);
+        updateAudioParams(param, mappedVal);
+    }
+}
+
 // --- Setup Listeners ---
 function setupEventListeners() {
-    // MIDI UI
-    document.getElementById('midi-device').addEventListener('change', (e) => {
-        selectMidiDevice(e.target.value);
-    });
-    
-    document.getElementById('midi-channel').addEventListener('change', (e) => {
-        selectedMidiChannel = parseInt(e.target.value);
-    });
+    document.getElementById('midi-device').addEventListener('change', (e) => selectMidiDevice(e.target.value, 'note'));
+    document.getElementById('midi-cc-device').addEventListener('change', (e) => selectMidiDevice(e.target.value, 'cc'));
+    document.getElementById('midi-channel').addEventListener('change', (e) => selectedMidiChannel = parseInt(e.target.value));
 
-    // Existing Listeners
     document.querySelectorAll('.dial').forEach(dial => {
         dial.addEventListener('mousedown', handleDialStart);
     });
 
     document.querySelectorAll('input, select').forEach(el => {
-        if (el.id.startsWith('midi')) return; // Skip midi controls for standard param map
+        if (el.id.startsWith('midi')) return; 
         
         el.addEventListener('input', (e) => {
             const param = e.target.dataset.param;
@@ -425,7 +534,7 @@ function setupEventListeners() {
     });
 
     const playBtn = document.getElementById('play-btn');
-    playBtn.addEventListener('mousedown', () => startNoteSequence()); // Mouse Gate
+    playBtn.addEventListener('mousedown', () => startNoteSequence()); 
     playBtn.addEventListener('mouseup', () => stopNoteSequence());
     playBtn.addEventListener('mouseleave', () => { if (isPlaying) stopNoteSequence(); });
     
@@ -438,22 +547,16 @@ function setupEventListeners() {
 
 // --- Polyphonic Note Logic ---
 
-// Note On (Polyphonic)
 function noteOn(noteNum, velocity = 127) {
     initAudio();
-    
-    // Voice Stealing / Limiting
     if (activeVoices.size >= MAX_VOICES) {
-        // Steal the oldest voice (first key in iterator)
         const firstNote = activeVoices.keys().next().value;
         const oldVoice = activeVoices.get(firstNote);
         oldVoice.release();
         activeVoices.delete(firstNote);
     }
 
-    // Frequency Calculation
     const freq = 440 * Math.pow(2, (noteNum - 69) / 12);
-    
     const voice = new SynthVoice(audioCtx, masterGainNode);
     voice.trigger(freq, noteNum);
     activeVoices.set(noteNum, voice);
@@ -467,13 +570,7 @@ function noteOff(noteNum) {
     }
 }
 
-function killAllVoices() {
-    activeVoices.forEach(v => v.disconnect());
-    activeVoices.clear();
-}
-
 // --- Arp / Mouse Interaction Shim ---
-// The ARP logic was designed for a single voice. Let's adapt it to trigger `noteOn/noteOff`.
 
 function startNoteSequence() {
     initAudio();
@@ -498,17 +595,9 @@ function stopNoteSequence() {
         arpInterval = null;
     }
     
-    // If ARP, we might have a lingering note
-    // If Single Note, release C4
     if (activeVoices.has(60) && !settings.arpEnabled) {
         noteOff(60);
     } else {
-        // For ARP, we don't know exactly which note is playing without tracking state specifically
-        // Easiest: Release all voices initiated by the ARP.
-        // But wait, `noteOn` adds to `activeVoices`. 
-        // We should just release all active voices if we want a hard stop, or track the last arp note.
-        // Let's release all for safety on stop.
-        // Or better, track `lastArpNote`.
         if (lastArpNote) noteOff(lastArpNote);
     }
 }
@@ -518,9 +607,7 @@ let lastArpNote = null;
 function startArp() {
     arpIndex = 0;
     const ms = 60000 / settings.arpRate / 2;
-    
     playArpStep();
-    
     arpInterval = setInterval(() => {
         if (!isPlaying) {
             clearInterval(arpInterval);
@@ -535,7 +622,6 @@ function playArpStep() {
     const baseNote = 60; 
     const offset = arpPattern[arpIndex % arpPattern.length];
     arpIndex++;
-    
     lastArpNote = baseNote + offset;
     noteOn(lastArpNote, 100);
 }
@@ -548,7 +634,6 @@ function handleArpChange() {
         clearInterval(arpInterval);
         arpInterval = null;
         if (lastArpNote) noteOff(lastArpNote);
-        // Switch to sustained C4?
         noteOn(60, 127);
     } else if (isPlaying && settings.arpEnabled && arpInterval) {
         clearInterval(arpInterval);
@@ -556,23 +641,16 @@ function handleArpChange() {
     }
 }
 
-// --- Global Parameter Updates ---
 function updateAudioParams(param, value) {
-    // Update master gain
     if (param === 'volume' && masterGainNode) {
         masterGainNode.gain.setTargetAtTime(value, audioCtx.currentTime, 0.01);
     }
-    
-    // Update all active voices
     activeVoices.forEach(voice => {
         voice.updateParams(param, value);
     });
 }
 
-// --- Helpers (Dial, UI, Settings) ---
-// (Need to copy these back in as they were overwritten by the write tool, 
-// but since I used 'write' I provided the full file.
-// I will include the previous helpers here.)
+// --- Helpers ---
 
 function loadSettings() {
     const saved = localStorage.getItem('synthSettings');
@@ -628,7 +706,6 @@ function updateValueDisplay(param, value) {
     }
 }
 
-// Dial Logic
 let activeDial = null;
 let startY = 0;
 let startVal = 0;

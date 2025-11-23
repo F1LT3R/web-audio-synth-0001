@@ -12,28 +12,37 @@
             <h1>Poly-Osc Synth</h1>
             <div class="global-controls">
                 <div class="midi-controls">
-                    <select id="midi-device">
-                        <option value="-1">No MIDI Device</option>
-                    </select>
-                    <select id="midi-channel">
-                        <option value="-1">Omni</option>
-                        <option value="0">Ch 1</option>
-                        <option value="1">Ch 2</option>
-                        <option value="2">Ch 3</option>
-                        <option value="3">Ch 4</option>
-                        <option value="4">Ch 5</option>
-                        <option value="5">Ch 6</option>
-                        <option value="6">Ch 7</option>
-                        <option value="7">Ch 8</option>
-                        <option value="8">Ch 9</option>
-                        <option value="9">Ch 10</option>
-                        <option value="10">Ch 11</option>
-                        <option value="11">Ch 12</option>
-                        <option value="12">Ch 13</option>
-                        <option value="13">Ch 14</option>
-                        <option value="14">Ch 15</option>
-                        <option value="15">Ch 16</option>
-                    </select>
+                    <div class="midi-group">
+                        <label>Notes:</label>
+                        <select id="midi-device">
+                            <option value="-1">No Device</option>
+                        </select>
+                        <select id="midi-channel">
+                            <option value="-1">Omni</option>
+                            <option value="0">Ch 1</option>
+                            <option value="1">Ch 2</option>
+                            <option value="2">Ch 3</option>
+                            <option value="3">Ch 4</option>
+                            <option value="4">Ch 5</option>
+                            <option value="5">Ch 6</option>
+                            <option value="6">Ch 7</option>
+                            <option value="7">Ch 8</option>
+                            <option value="8">Ch 9</option>
+                            <option value="9">Ch 10</option>
+                            <option value="10">Ch 11</option>
+                            <option value="11">Ch 12</option>
+                            <option value="12">Ch 13</option>
+                            <option value="13">Ch 14</option>
+                            <option value="14">Ch 15</option>
+                            <option value="15">Ch 16</option>
+                        </select>
+                    </div>
+                    <div class="midi-group">
+                        <label>CC:</label>
+                        <select id="midi-cc-device">
+                            <option value="-1">No Device</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="arp-controls">
                     <label class="toggle-label">
@@ -85,6 +94,13 @@
                         <label>Fine</label>
                     </div>
                     <div class="dial-wrapper">
+                        <div class="dial" data-param="osc1_pan" data-min="-1" data-max="1" data-step="0.05">
+                            <div class="dial-knob"></div>
+                            <div class="dial-value">0</div>
+                        </div>
+                        <label>Pan</label>
+                    </div>
+                    <div class="dial-wrapper">
                         <div class="dial" data-param="osc1_gain" data-min="0" data-max="1" data-step="0.01">
                             <div class="dial-knob"></div>
                             <div class="dial-value">0.5</div>
@@ -127,6 +143,13 @@
                         <label>Fine</label>
                     </div>
                     <div class="dial-wrapper">
+                        <div class="dial" data-param="osc2_pan" data-min="-1" data-max="1" data-step="0.05">
+                            <div class="dial-knob"></div>
+                            <div class="dial-value">0</div>
+                        </div>
+                        <label>Pan</label>
+                    </div>
+                    <div class="dial-wrapper">
                         <div class="dial" data-param="osc2_gain" data-min="0" data-max="1" data-step="0.01">
                             <div class="dial-knob"></div>
                             <div class="dial-value">0.5</div>
@@ -167,6 +190,13 @@
                             <div class="dial-value">0</div>
                         </div>
                         <label>Fine</label>
+                    </div>
+                    <div class="dial-wrapper">
+                        <div class="dial" data-param="osc3_pan" data-min="-1" data-max="1" data-step="0.05">
+                            <div class="dial-knob"></div>
+                            <div class="dial-value">0</div>
+                        </div>
+                        <label>Pan</label>
                     </div>
                     <div class="dial-wrapper">
                         <div class="dial" data-param="osc3_gain" data-min="0" data-max="1" data-step="0.01">
