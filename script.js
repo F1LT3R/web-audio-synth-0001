@@ -73,11 +73,14 @@ class SynthVoice {
         this.ctx = ctx;
         this.dest = dest;
         this.oscillators = [];
-        this.oscPans = []; // Pan nodes per osc
+        this.oscGains = []; // Store gains for live mixing
+        this.oscPans = []; 
         this.filter = null;
         this.ampEnv = null;
-        this.masterPan = null; // Voice-level pan (Master Pan)
-        this.tremolo = { osc: null, gain: null };
+        this.masterPan = null; 
+        this.tremolo = { osc: null, gain: null, depthNode: null }; // Added depthNode
+        this.filterEnvSrc = null; 
+        this.filterEnvGain = null; 
         this.active = false;
         this.note = null; 
     }
@@ -88,7 +91,6 @@ class SynthVoice {
         const now = this.ctx.currentTime;
 
         // 1. Create Graph Chain
-        // Master <- MasterPan <- Tremolo <- Amp <- Filter <- [ (Osc->Gain->Pan) ... ]
         
         // Master Pan
         if (this.ctx.createStereoPanner) {
@@ -110,7 +112,7 @@ class SynthVoice {
         tremOsc.connect(tremDepthGain);
         tremDepthGain.connect(tremGain.gain);
         tremOsc.start(now);
-        this.tremolo = { osc: tremOsc, gain: tremGain };
+        this.tremolo = { osc: tremOsc, gain: tremGain, depthNode: tremDepthGain };
 
         // Amp (VCA)
         this.ampEnv = this.ctx.createGain();
@@ -119,8 +121,21 @@ class SynthVoice {
         // Filter
         this.filter = this.ctx.createBiquadFilter();
         this.filter.type = settings.filterType;
-        this.filter.frequency.value = settings.filterFreq;
+        
+        let baseF = settings.filterFreq;
+        if (settings.filterType === 'lowpass' && baseF > 10000) baseF = 10000;
+        this.filter.frequency.value = baseF;
         this.filter.Q.value = settings.filterQ;
+
+        // Filter Envelope Modulation
+        this.filterEnvSrc = this.ctx.createConstantSource();
+        this.filterEnvSrc.offset.value = 0;
+        this.filterEnvGain = this.ctx.createGain();
+        this.filterEnvGain.gain.value = settings.filterEnvAmt;
+        
+        this.filterEnvSrc.connect(this.filterEnvGain);
+        this.filterEnvGain.connect(this.filter.frequency);
+        this.filterEnvSrc.start(now);
 
         // Chain Construction
         this.filter.connect(this.ampEnv);
@@ -130,6 +145,7 @@ class SynthVoice {
 
         // Oscillators
         this.oscillators = [];
+        this.oscGains = [];
         this.oscPans = [];
         
         for (let i = 1; i <= 3; i++) {
@@ -137,7 +153,6 @@ class SynthVoice {
             const gain = this.ctx.createGain();
             let panNode;
 
-            // Per-Osc Pan
             if (this.ctx.createStereoPanner) {
                 panNode = this.ctx.createStereoPanner();
                 panNode.pan.value = settings[`osc${i}_pan`];
@@ -156,7 +171,6 @@ class SynthVoice {
             osc.detune.value = totalCents;
             gain.gain.value = settings[`osc${i}_gain`];
             
-            // Connection: Osc -> Gain -> Pan -> Filter
             osc.connect(gain);
             gain.connect(panNode);
             panNode.connect(this.filter);
@@ -164,6 +178,7 @@ class SynthVoice {
             osc.start(now);
             
             this.oscillators.push(osc);
+            this.oscGains.push(gain);
             this.oscPans.push(panNode);
         }
 
@@ -182,18 +197,11 @@ class SynthVoice {
         const fa = Math.max(0.001, settings.f_attack);
         const fd = Math.max(0.001, settings.f_decay);
         const fs = settings.f_sustain;
-        let baseF = settings.filterFreq;
         
-        // Cap base freq for LP
-        if (settings.filterType === 'lowpass' && baseF > 10000) baseF = 10000;
-
-        const amt = settings.filterEnvAmt;
-        
-        this.filter.frequency.cancelScheduledValues(now);
-        this.filter.frequency.setValueAtTime(baseF, now);
-        this.filter.frequency.linearRampToValueAtTime(baseF + amt, now + fa);
-        const sustF = baseF + (amt * fs);
-        this.filter.frequency.linearRampToValueAtTime(sustF, now + fa + fd);
+        this.filterEnvSrc.offset.cancelScheduledValues(now);
+        this.filterEnvSrc.offset.setValueAtTime(0, now);
+        this.filterEnvSrc.offset.linearRampToValueAtTime(1, now + fa);
+        this.filterEnvSrc.offset.linearRampToValueAtTime(fs, now + fa + fd);
     }
 
     release() {
@@ -209,48 +217,91 @@ class SynthVoice {
             this.ampEnv.gain.linearRampToValueAtTime(0, now + r);
         }
 
-        if (this.filter) {
-            this.filter.frequency.cancelScheduledValues(now);
-            this.filter.frequency.setValueAtTime(this.filter.frequency.value, now);
-            this.filter.frequency.linearRampToValueAtTime(settings.filterFreq, now + fr);
+        if (this.filterEnvSrc) {
+            this.filterEnvSrc.offset.cancelScheduledValues(now);
+            this.filterEnvSrc.offset.setValueAtTime(this.filterEnvSrc.offset.value, now);
+            this.filterEnvSrc.offset.linearRampToValueAtTime(0, now + fr);
         }
 
         const stopTime = now + r + 0.1;
         this.oscillators.forEach(osc => osc.stop(stopTime));
         if (this.tremolo.osc) this.tremolo.osc.stop(stopTime);
+        if (this.filterEnvSrc) this.filterEnvSrc.stop(stopTime + fr);
 
         setTimeout(() => {
             this.disconnect();
-        }, (r + 0.2) * 1000);
+        }, (Math.max(r, fr) + 0.2) * 1000);
     }
 
     disconnect() {
         this.oscillators.forEach(o => { try { o.disconnect(); } catch(e){} });
+        this.oscGains.forEach(g => { try { g.disconnect(); } catch(e){} });
         this.oscPans.forEach(p => { try { p.disconnect(); } catch(e){} });
         if (this.filter) { try { this.filter.disconnect(); } catch(e){} }
         if (this.ampEnv) { try { this.ampEnv.disconnect(); } catch(e){} }
         if (this.masterPan) { try { this.masterPan.disconnect(); } catch(e){} }
         if (this.tremolo.osc) { try { this.tremolo.osc.disconnect(); } catch(e){} }
         if (this.tremolo.gain) { try { this.tremolo.gain.disconnect(); } catch(e){} }
+        if (this.tremolo.depthNode) { try { this.tremolo.depthNode.disconnect(); } catch(e){} }
+        if (this.filterEnvSrc) { try { this.filterEnvSrc.disconnect(); } catch(e){} }
+        if (this.filterEnvGain) { try { this.filterEnvGain.disconnect(); } catch(e){} }
         this.note = null;
     }
     
     updateParams(param, value) {
         if (!this.active) return;
         const now = this.ctx.currentTime;
+        const smooth = 0.05;
         
+        // Filter
         if (param === 'filterFreq' && this.filter) {
              let target = value;
              if (settings.filterType === 'lowpass' && target > 10000) target = 10000;
-             this.filter.frequency.setTargetAtTime(target, now, 0.1);
+             this.filter.frequency.setTargetAtTime(target, now, smooth);
         }
-        if (param === 'filterQ' && this.filter) this.filter.Q.setTargetAtTime(value, now, 0.1);
-        if (param === 'tremRate' && this.tremolo.osc) this.tremolo.osc.frequency.setTargetAtTime(value, now, 0.1);
-        // Note: Master pan update logic handled in global param updater for voices?
-        // Actually, SynthVoice stores individual pan nodes so we might need to update them too if we want per-voice live pan tweaking.
-        // But 'pan' (master pan) is applied via this.masterPan
+        if (param === 'filterEnvAmt' && this.filterEnvGain) {
+             this.filterEnvGain.gain.setTargetAtTime(value, now, smooth);
+        }
+        if (param === 'filterQ' && this.filter) this.filter.Q.setTargetAtTime(value, now, smooth);
+        
+        // Tremolo
+        if (param === 'tremRate' && this.tremolo.osc) this.tremolo.osc.frequency.setTargetAtTime(value, now, smooth);
+        if (param === 'tremDepth' && this.tremolo.depthNode) this.tremolo.depthNode.gain.setTargetAtTime(value, now, smooth);
+        
+        // Master Pan
         if (param === 'pan' && this.masterPan && this.masterPan.pan) {
-             this.masterPan.pan.setTargetAtTime(value, now, 0.1);
+             this.masterPan.pan.setTargetAtTime(value, now, smooth);
+        }
+
+        // Oscillators (Dynamic Index)
+        // Param format: osc1_gain, osc2_pan, etc.
+        if (param.startsWith('osc')) {
+            // Parse index
+            const match = param.match(/osc(\d+)_(\w+)/);
+            if (match) {
+                const index = parseInt(match[1]) - 1; // 0-indexed
+                const type = match[2];
+                
+                if (this.oscillators[index]) {
+                    if (type === 'gain' && this.oscGains[index]) {
+                        this.oscGains[index].gain.setTargetAtTime(value, now, smooth);
+                    }
+                    if (type === 'pan' && this.oscPans[index] && this.oscPans[index].pan) {
+                        this.oscPans[index].pan.setTargetAtTime(value, now, smooth);
+                    }
+                    if ((type === 'detune' || type === 'semi' || type === 'octave') && this.oscillators[index]) {
+                        // Recalculate total detune
+                        const oct = settings[`osc${index+1}_octave`];
+                        const semi = settings[`osc${index+1}_semi`];
+                        const fine = settings[`osc${index+1}_detune`];
+                        const totalCents = (oct * 1200) + (semi * 100) + fine;
+                        this.oscillators[index].detune.setTargetAtTime(totalCents, now, smooth);
+                    }
+                    if (type === 'waveform') {
+                        this.oscillators[index].type = waveforms[value];
+                    }
+                }
+            }
         }
     }
 }
@@ -477,66 +528,16 @@ function mapCC(cc, val) {
     const norm = val / 127;
     let param = null;
     let mappedVal = null;
-
-    // Offset CC by -1 to match 0-based indexing if needed, or just shift map
-    // Request says "offset CC numbers by -1", implying the user sends CC 1 but code receives CC 0?
-    // OR user sends CC 0 and wants it to map to Case 1?
-    // Usually "offset by -1" means if input is 1, treat as 0.
-    // But standard MIDI CCs are 0-127.
-    // If user says "CC 1-16" usually means literally 1-16.
-    // If their controller sends 0-15, we need to add 1 to match our case 1-16.
-    // IF they say "Offset by -1", likely they mean:
-    // "My controller sends 0-15, but I want that to control the parameters labeled 1-16".
-    // So we should ADD 1 to the incoming CC? Or subtract?
-    // "Offset the CC numbers by -1" -> If I receive 1, it becomes 0.
-    // If I receive 17, it becomes 16.
-    // Let's assume they mean they are sending 1-16 but want to match cases 0-15? 
-    // OR they are sending 0-15 and want to match cases 1-16?
     
-    // Let's look at the map: case 1 ... case 16.
-    // If the user sends CC 0, nothing happens.
-    // If the user sends CC 1, 'filterFreq' changes.
-    
-    // If the user wants to offset by -1:
-    // Maybe they mean "Map CC 0 to Cutoff, CC 1 to Res..." (0-15 range)
-    // In that case, we check (cc + 1).
-    
-    // Let's shift the switch case logic to accept 0-15 by adding 1 to `cc`.
-    // Effectively: mapCC(cc + 1, val) calls.
-    
-    // Let's assume "offset CC numbers by -1" means "Input CC - 1 = Target Case"?
-    // No, that would make Input 1 -> Case 0 (Invalid).
-    // It likely means "Input CC + 1 = Target Case" (User sends 0, we treat as 1).
-    
-    // Wait, phrasing "offset ... by -1" usually implies subtraction.
-    // Input 1 -> 0.
-    // Input 2 -> 1.
-    
-    // Let's re-read: "CC 1-16 - against the 16 most valueable parameters".
-    // If the controller sends 0-15, we need to map 0->1, 1->2.
-    // This is an offset of +1.
-    
-    // If the controller sends 1-16, it works as is.
-    
-    // If the user specifically asked "offset by -1", maybe they set their controller to 1-16 but want to use 0-15 internally?
-    // BUT my code uses 1-16.
-    
-    // Let's assume they want to support controllers sending 0-15 mapping to the 1-16 list.
-    // So we use `cc + 1`.
-    
-    // However, if they literally meant "Shift the map down", i.e. Case 0 = Cutoff...
-    // I will assume they want to support 0-indexed CCs (0-15).
-    
-    const targetCC = cc + 1; 
+    // Offset CC to match 1-16 based on user request
+    const targetCC = cc + 1;
 
     switch(targetCC) {
         case 1: // Cutoff
             param = 'filterFreq';
             if (settings.filterType === 'lowpass') {
-                // Limit to 10k in LP mode: 20 * 500 = 10000
-                mappedVal = 20 * Math.pow(500, norm);
+                mappedVal = 20 * Math.pow(500, norm); // Max 10k
             } else {
-                // Full range 20k
                 mappedVal = 20 * Math.pow(1000, norm); 
             }
             break;
