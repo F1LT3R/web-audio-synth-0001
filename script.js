@@ -20,6 +20,11 @@ let selectedMidiChannel = -1; // -1 = Omni
 
 // Default Settings
 const defaultSettings = {
+    // MIDI Defaults
+    midiDevice: "-1",
+    midiCCDevice: "-1",
+    midiChannel: -1,
+
     arpEnabled: false,
     arpRate: 120,
     // Osc 1
@@ -397,9 +402,11 @@ function updateMidiDevices() {
     const inputs = midiAccess.inputs;
     const selectNote = document.getElementById('midi-device');
     const selectCC = document.getElementById('midi-cc-device');
+    const selectChannel = document.getElementById('midi-channel');
     
-    const currentNote = selectNote.value;
-    const currentCC = selectCC.value;
+    // Use globals (restored from settings) as preferred selection
+    // If globals are "-1", we check if we should auto-select.
+    // But persistence is priority.
     
     const opts = '<option value="-1">No Device</option>';
     selectNote.innerHTML = opts;
@@ -417,8 +424,22 @@ function updateMidiDevices() {
         selectCC.appendChild(opt2);
     }
     
-    if (Array.from(selectNote.options).some(opt => opt.value === currentNote)) selectNote.value = currentNote;
-    if (Array.from(selectCC.options).some(opt => opt.value === currentCC)) selectCC.value = currentCC;
+    // Restore selections
+    if (Array.from(selectNote.options).some(opt => opt.value === selectedMidiDevice)) {
+        selectNote.value = selectedMidiDevice;
+        // Trigger logic
+        selectMidiDevice(selectedMidiDevice, 'note');
+    }
+    
+    if (Array.from(selectCC.options).some(opt => opt.value === selectedMidiCCDevice)) {
+        selectCC.value = selectedMidiCCDevice;
+        selectMidiDevice(selectedMidiCCDevice, 'cc');
+    }
+    
+    // Restore channel UI
+    if (selectChannel) {
+        selectChannel.value = selectedMidiChannel;
+    }
 }
 
 function selectMidiDevice(id, type) {
@@ -529,7 +550,6 @@ function mapCC(cc, val) {
     let param = null;
     let mappedVal = null;
     
-    // Offset CC to match 1-16 based on user request
     const targetCC = cc + 1;
 
     switch(targetCC) {
@@ -575,9 +595,18 @@ function mapCC(cc, val) {
 
 // --- Setup Listeners ---
 function setupEventListeners() {
-    document.getElementById('midi-device').addEventListener('change', (e) => selectMidiDevice(e.target.value, 'note'));
-    document.getElementById('midi-cc-device').addEventListener('change', (e) => selectMidiDevice(e.target.value, 'cc'));
-    document.getElementById('midi-channel').addEventListener('change', (e) => selectedMidiChannel = parseInt(e.target.value));
+    document.getElementById('midi-device').addEventListener('change', (e) => {
+        selectMidiDevice(e.target.value, 'note');
+        saveSettings();
+    });
+    document.getElementById('midi-cc-device').addEventListener('change', (e) => {
+        selectMidiDevice(e.target.value, 'cc');
+        saveSettings();
+    });
+    document.getElementById('midi-channel').addEventListener('change', (e) => {
+        selectedMidiChannel = parseInt(e.target.value);
+        saveSettings();
+    });
 
     document.querySelectorAll('.dial').forEach(dial => {
         dial.addEventListener('mousedown', handleDialStart);
@@ -730,11 +759,22 @@ function loadSettings() {
         try {
             const parsed = JSON.parse(saved);
             settings = { ...defaultSettings, ...parsed };
+            
+            // Restore Globals
+            if (settings.midiDevice) selectedMidiDevice = settings.midiDevice;
+            if (settings.midiCCDevice) selectedMidiCCDevice = settings.midiCCDevice;
+            if (settings.midiChannel !== undefined) selectedMidiChannel = parseInt(settings.midiChannel);
+            
         } catch (e) { settings = { ...defaultSettings }; }
     }
 }
 
 function saveSettings() {
+    // Sync globals to settings before save
+    settings.midiDevice = selectedMidiDevice;
+    settings.midiCCDevice = selectedMidiCCDevice;
+    settings.midiChannel = selectedMidiChannel;
+    
     localStorage.setItem('synthSettings', JSON.stringify(settings));
 }
 
