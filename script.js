@@ -182,7 +182,11 @@ class SynthVoice {
         const fa = Math.max(0.001, settings.f_attack);
         const fd = Math.max(0.001, settings.f_decay);
         const fs = settings.f_sustain;
-        const baseF = settings.filterFreq;
+        let baseF = settings.filterFreq;
+        
+        // Cap base freq for LP
+        if (settings.filterType === 'lowpass' && baseF > 10000) baseF = 10000;
+
         const amt = settings.filterEnvAmt;
         
         this.filter.frequency.cancelScheduledValues(now);
@@ -235,7 +239,11 @@ class SynthVoice {
         if (!this.active) return;
         const now = this.ctx.currentTime;
         
-        if (param === 'filterFreq' && this.filter) this.filter.frequency.setTargetAtTime(value, now, 0.1);
+        if (param === 'filterFreq' && this.filter) {
+             let target = value;
+             if (settings.filterType === 'lowpass' && target > 10000) target = 10000;
+             this.filter.frequency.setTargetAtTime(target, now, 0.1);
+        }
         if (param === 'filterQ' && this.filter) this.filter.Q.setTargetAtTime(value, now, 0.1);
         if (param === 'tremRate' && this.tremolo.osc) this.tremolo.osc.frequency.setTargetAtTime(value, now, 0.1);
         // Note: Master pan update logic handled in global param updater for voices?
@@ -301,8 +309,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function initAudio() {
     if (!audioCtx) {
-        // Low latency hint
-        audioCtx = new AudioContext({ latencyHint: 'interactive' });
+        // Low latency hint and forced sample rate
+        audioCtx = new AudioContext({ 
+            latencyHint: 'interactive',
+            sampleRate: 48000 
+        });
         masterGainNode = audioCtx.createGain();
         masterGainNode.connect(audioCtx.destination);
         masterGainNode.gain.value = settings.volume;
@@ -467,8 +478,68 @@ function mapCC(cc, val) {
     let param = null;
     let mappedVal = null;
 
-    switch(cc) {
-        case 1: param = 'filterFreq'; mappedVal = 20 * Math.pow(1000, norm); break;
+    // Offset CC by -1 to match 0-based indexing if needed, or just shift map
+    // Request says "offset CC numbers by -1", implying the user sends CC 1 but code receives CC 0?
+    // OR user sends CC 0 and wants it to map to Case 1?
+    // Usually "offset by -1" means if input is 1, treat as 0.
+    // But standard MIDI CCs are 0-127.
+    // If user says "CC 1-16" usually means literally 1-16.
+    // If their controller sends 0-15, we need to add 1 to match our case 1-16.
+    // IF they say "Offset by -1", likely they mean:
+    // "My controller sends 0-15, but I want that to control the parameters labeled 1-16".
+    // So we should ADD 1 to the incoming CC? Or subtract?
+    // "Offset the CC numbers by -1" -> If I receive 1, it becomes 0.
+    // If I receive 17, it becomes 16.
+    // Let's assume they mean they are sending 1-16 but want to match cases 0-15? 
+    // OR they are sending 0-15 and want to match cases 1-16?
+    
+    // Let's look at the map: case 1 ... case 16.
+    // If the user sends CC 0, nothing happens.
+    // If the user sends CC 1, 'filterFreq' changes.
+    
+    // If the user wants to offset by -1:
+    // Maybe they mean "Map CC 0 to Cutoff, CC 1 to Res..." (0-15 range)
+    // In that case, we check (cc + 1).
+    
+    // Let's shift the switch case logic to accept 0-15 by adding 1 to `cc`.
+    // Effectively: mapCC(cc + 1, val) calls.
+    
+    // Let's assume "offset CC numbers by -1" means "Input CC - 1 = Target Case"?
+    // No, that would make Input 1 -> Case 0 (Invalid).
+    // It likely means "Input CC + 1 = Target Case" (User sends 0, we treat as 1).
+    
+    // Wait, phrasing "offset ... by -1" usually implies subtraction.
+    // Input 1 -> 0.
+    // Input 2 -> 1.
+    
+    // Let's re-read: "CC 1-16 - against the 16 most valueable parameters".
+    // If the controller sends 0-15, we need to map 0->1, 1->2.
+    // This is an offset of +1.
+    
+    // If the controller sends 1-16, it works as is.
+    
+    // If the user specifically asked "offset by -1", maybe they set their controller to 1-16 but want to use 0-15 internally?
+    // BUT my code uses 1-16.
+    
+    // Let's assume they want to support controllers sending 0-15 mapping to the 1-16 list.
+    // So we use `cc + 1`.
+    
+    // However, if they literally meant "Shift the map down", i.e. Case 0 = Cutoff...
+    // I will assume they want to support 0-indexed CCs (0-15).
+    
+    const targetCC = cc + 1; 
+
+    switch(targetCC) {
+        case 1: // Cutoff
+            param = 'filterFreq';
+            if (settings.filterType === 'lowpass') {
+                // Limit to 10k in LP mode: 20 * 500 = 10000
+                mappedVal = 20 * Math.pow(500, norm);
+            } else {
+                // Full range 20k
+                mappedVal = 20 * Math.pow(1000, norm); 
+            }
+            break;
         case 2: param = 'filterQ'; mappedVal = norm * 20; break;
         case 3: param = 'tremRate'; mappedVal = 0.1 + (norm * 19.9); break;
         case 4: param = 'tremDepth'; mappedVal = norm; break;
