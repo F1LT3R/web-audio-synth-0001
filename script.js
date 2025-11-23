@@ -8,6 +8,7 @@ const waveforms = ['sine', 'square', 'sawtooth', 'triangle'];
 const arpPattern = [0, 4, 7, 12]; 
 let arpIndex = 0;
 const MAX_VOICES = 8;
+const SMOOTHING_TIME = 0.015; // 15ms for fast response but no zipper noise
 
 // MIDI State
 let midiAccess = null;
@@ -251,26 +252,25 @@ class SynthVoice {
     updateParams(param, value) {
         if (!this.active) return;
         const now = this.ctx.currentTime;
-        const smooth = 0.05;
         
         // Filter
         if (param === 'filterFreq' && this.filter) {
              let target = value;
              if (settings.filterType === 'lowpass' && target > 10000) target = 10000;
-             this.filter.frequency.setTargetAtTime(target, now, smooth);
+             this.filter.frequency.setTargetAtTime(target, now, SMOOTHING_TIME);
         }
         if (param === 'filterEnvAmt' && this.filterEnvGain) {
-             this.filterEnvGain.gain.setTargetAtTime(value, now, smooth);
+             this.filterEnvGain.gain.setTargetAtTime(value, now, SMOOTHING_TIME);
         }
-        if (param === 'filterQ' && this.filter) this.filter.Q.setTargetAtTime(value, now, smooth);
+        if (param === 'filterQ' && this.filter) this.filter.Q.setTargetAtTime(value, now, SMOOTHING_TIME);
         
         // Tremolo
-        if (param === 'tremRate' && this.tremolo.osc) this.tremolo.osc.frequency.setTargetAtTime(value, now, smooth);
-        if (param === 'tremDepth' && this.tremolo.depthNode) this.tremolo.depthNode.gain.setTargetAtTime(value, now, smooth);
+        if (param === 'tremRate' && this.tremolo.osc) this.tremolo.osc.frequency.setTargetAtTime(value, now, SMOOTHING_TIME);
+        if (param === 'tremDepth' && this.tremolo.depthNode) this.tremolo.depthNode.gain.setTargetAtTime(value, now, SMOOTHING_TIME);
         
         // Master Pan
         if (param === 'pan' && this.masterPan && this.masterPan.pan) {
-             this.masterPan.pan.setTargetAtTime(value, now, smooth);
+             this.masterPan.pan.setTargetAtTime(value, now, SMOOTHING_TIME);
         }
 
         // Oscillators (Dynamic Index)
@@ -284,10 +284,10 @@ class SynthVoice {
                 
                 if (this.oscillators[index]) {
                     if (type === 'gain' && this.oscGains[index]) {
-                        this.oscGains[index].gain.setTargetAtTime(value, now, smooth);
+                        this.oscGains[index].gain.setTargetAtTime(value, now, SMOOTHING_TIME);
                     }
                     if (type === 'pan' && this.oscPans[index] && this.oscPans[index].pan) {
-                        this.oscPans[index].pan.setTargetAtTime(value, now, smooth);
+                        this.oscPans[index].pan.setTargetAtTime(value, now, SMOOTHING_TIME);
                     }
                     if ((type === 'detune' || type === 'semi' || type === 'octave') && this.oscillators[index]) {
                         // Recalculate total detune
@@ -295,7 +295,7 @@ class SynthVoice {
                         const semi = settings[`osc${index+1}_semi`];
                         const fine = settings[`osc${index+1}_detune`];
                         const totalCents = (oct * 1200) + (semi * 100) + fine;
-                        this.oscillators[index].detune.setTargetAtTime(totalCents, now, smooth);
+                        this.oscillators[index].detune.setTargetAtTime(totalCents, now, SMOOTHING_TIME);
                     }
                     if (type === 'waveform') {
                         this.oscillators[index].type = waveforms[value];
