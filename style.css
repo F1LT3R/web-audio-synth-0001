@@ -1,0 +1,259 @@
+:root {
+    --bg-color: #2b2b2b;
+    --panel-bg: #3d3d3d;
+    --text-color: #e0e0e0;
+    --accent-color: #4CAF50;
+    --knob-color: #555;
+    --knob-indicator: #fff;
+    --knob-size: 50px;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start; /* changed from center to allow scrolling if needed */
+    min-height: 100vh;
+    padding: 20px 0;
+}
+
+.container {
+    max-width: 1100px;
+    width: 100%;
+    padding: 20px;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    background: var(--panel-bg);
+    padding: 15px 25px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+h1 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+h2 {
+    margin-top: 0;
+    font-size: 1.1rem;
+    border-bottom: 1px solid #555;
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+    color: var(--accent-color);
+}
+
+h3 {
+    font-size: 0.9rem;
+    color: #aaa;
+    margin: 15px 0 10px 0;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.global-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.arp-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    background: #333;
+    padding: 5px 15px;
+    border-radius: 4px;
+}
+
+.toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+button {
+    background: var(--accent-color);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: bold;
+}
+
+button:hover {
+    opacity: 0.9;
+}
+
+button.active {
+    background: #ff5722;
+    box-shadow: 0 0 10px #ff5722;
+}
+
+.synth-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 15px;
+}
+
+.panel {
+    background: var(--panel-bg);
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+}
+
+/* Dial Component */
+.controls-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-around;
+    gap: 10px;
+}
+
+.dial-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    user-select: none;
+    width: 60px;
+}
+
+.dial {
+    width: var(--knob-size);
+    height: var(--knob-size);
+    background: var(--knob-color);
+    border-radius: 50%;
+    position: relative;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+    margin-bottom: 5px;
+}
+
+.dial-knob {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    transition: transform 0.1s cubic-bezier(0.1, 0.7, 1.0, 0.1);
+}
+
+.dial-knob::after {
+    content: '';
+    position: absolute;
+    top: 10%;
+    left: 50%;
+    width: 3px;
+    height: 35%;
+    background: var(--knob-indicator);
+    transform: translateX(-50%);
+    border-radius: 2px;
+}
+
+.dial-value {
+    font-size: 0.7rem;
+    color: #aaa;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.dial-wrapper label {
+    margin-top: 2px;
+    font-weight: bold;
+    font-size: 0.8rem;
+}
+
+/* Sliders */
+.controls-col {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.slider-group {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.slider-group.small {
+    width: 120px;
+}
+
+.slider-group label {
+    font-size: 0.8rem;
+    margin-bottom: 3px;
+}
+
+.slider-group input[type="range"] {
+    width: 100%;
+    cursor: pointer;
+    accent-color: var(--accent-color);
+}
+
+.slider-group select {
+    width: 100%;
+    padding: 5px;
+    background: #222;
+    color: white;
+    border: 1px solid #555;
+    border-radius: 4px;
+}
+
+.value-display {
+    font-size: 0.75rem;
+    color: #aaa;
+    align-self: flex-end;
+}
+
+/* ADSR Vertical Sliders */
+.adsr-row {
+    display: flex;
+    justify-content: space-between;
+    height: 120px;
+    margin-top: 10px;
+    background: rgba(0,0,0,0.2);
+    padding: 10px;
+    border-radius: 4px;
+}
+
+.slider-vert {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+}
+
+.slider-vert input[type=range] {
+    writing-mode: bt-lr; /* IE/Edge */
+    -webkit-appearance: slider-vertical; /* WebKit */
+    width: 8px;
+    height: 80%;
+    padding: 0 5px;
+}
+
+.slider-vert label {
+    font-size: 0.8rem;
+    margin-top: 5px;
+}
+
+.small-dials .dial {
+    width: 40px;
+    height: 40px;
+}

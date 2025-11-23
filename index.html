@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Audio Synth</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Poly-Osc Synth</h1>
+            <div class="global-controls">
+                <div class="midi-controls">
+                    <select id="midi-device">
+                        <option value="-1">No MIDI Device</option>
+                    </select>
+                    <select id="midi-channel">
+                        <option value="-1">Omni</option>
+                        <option value="0">Ch 1</option>
+                        <option value="1">Ch 2</option>
+                        <option value="2">Ch 3</option>
+                        <option value="3">Ch 4</option>
+                        <option value="4">Ch 5</option>
+                        <option value="5">Ch 6</option>
+                        <option value="6">Ch 7</option>
+                        <option value="7">Ch 8</option>
+                        <option value="8">Ch 9</option>
+                        <option value="9">Ch 10</option>
+                        <option value="10">Ch 11</option>
+                        <option value="11">Ch 12</option>
+                        <option value="12">Ch 13</option>
+                        <option value="13">Ch 14</option>
+                        <option value="14">Ch 15</option>
+                        <option value="15">Ch 16</option>
+                    </select>
+                </div>
+                <div class="arp-controls">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="arp-enabled" data-param="arpEnabled"> Arp On
+                    </label>
+                    <div class="slider-group small">
+                        <label>Rate</label>
+                        <input type="range" id="arp-rate" data-param="arpRate" min="60" max="240" step="1" value="120">
+                        <span id="disp-arpRate" class="value-display">120 BPM</span>
+                    </div>
+                </div>
+                <button id="play-btn">Play</button>
+                <button id="randomize-btn">Randomize</button>
+                <button id="reset-btn">Reset</button>
+            </div>
+        </header>
+
+        <div class="synth-grid">
+            <!-- Oscillator 1 -->
+            <section class="panel osc-panel">
+                <h2>Oscillator 1</h2>
+                <div class="controls-row">
+                    <div class="dial-wrapper">
+                        <div class="dial" data-param="osc1_waveform" data-min="0" data-max="3" data-step="1">
+                            <div class="dial-knob"></div>
+                            <div class="dial-value">Sine</div>
+                        </div>
+                        <label>Wave</label>
+                    </div>
+                    <div class="dial-wrapper">
+                        <div class="dial" data-param="osc1_octave" data-min="-2" data-max="2" data-step="1">
+                            <div class="dial-knob"></div>
+                            <div class="dial-value">0</div>
+                        </div>
+                        <label>Oct</label>
+                    </div>
+                    <div class="dial-wrapper">
+                        <div class="dial" data-param="osc1_semi" data-min="-12" data-max="12" data-step="1">
+                            <div class="dial-knob"></div>
+                            <div class="dial-value">0</div>
+                        </div>
+                        <label>Semi</label>
+                    </div>
+                    <div class="dial-wrapper">
+                        <div class="dial" data-param="osc1_detune" data-min="-50" data-max="50" data-step="1">
+                            <div class="dial-knob"></div>
+                            <div class="dial-value">0</div>
+                        </div>
+                        <label>Fine</label>
+                    </div>
+                    <div class="dial-wrapper">
+                        <div class="dial" data-param="osc1_gain" data-min="0" data-max="1" data-step="0.01">
+                            <div class="dial-knob"></div>
+                            <div class="dial-value">0.5</div>
+                        </div>
+                        <label>Level</label>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Oscillator 2 -->
+            <section class="panel osc-panel">
+                <h2>Oscillator 2</h2>
+                <div class="controls-row">
+                    <div class="dial-wrapper">
+                        <div class="dial" data-param="osc2_waveform" data-min="0" data-max="3" data-step="1">
+                            <div class="dial-knob"></div>
+                            <div class="dial-value">Square</div>
+                        </div>
+                        <label>Wave</label>
+                    </div>
+                    <div class="dial-wrapper">
+                        <div class="dial" data-param="osc2_octave" data-min="-2" data-max="2" data-step="1">
+                            <div class="dial-knob"></div>
+                            <div class="dial-value">0</div>
+                        </div>
+                        <label>Oct</label>
+                    </div>
+                    <div class="dial-wrapper">
+                        <div class="dial" data-param="osc2_semi" data-min="-12" data-max="12" data-step="1">
+                            <div class="dial-knob"></div>
+                            <div class="dial-value">0</div>
+                        </div>
+                        <label>Semi</label>
+                    </div>
+                    <div class="dial-wrapper">
+                        <div class="dial" data-param="osc2_detune" data-min="-50" data-max="50" data-step="1">
+                            <div class="dial-knob"></div>
+                            <div class="dial-value">0</div>
+                        </div>
+                        <label>Fine</label>
+                    </div>
+                    <div class="dial-wrapper">
+                        <div class="dial" data-param="osc2_gain" data-min="0" data-max="1" data-step="0.01">
+                            <div class="dial-knob"></div>
+                            <div class="dial-value">0.5</div>
+                        </div>
+                        <label>Level</label>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Oscillator 3 -->
+            <section class="panel osc-panel">
+                <h2>Oscillator 3</h2>
+                <div class="controls-row">
+                    <div class="dial-wrapper">
+                        <div class="dial" data-param="osc3_waveform" data-min="0" data-max="3" data-step="1">
+                            <div class="dial-knob"></div>
+                            <div class="dial-value">Saw</div>
+                        </div>
+                        <label>Wave</label>
+                    </div>
+                    <div class="dial-wrapper">
+                        <div class="dial" data-param="osc3_octave" data-min="-2" data-max="2" data-step="1">
+                            <div class="dial-knob"></div>
+                            <div class="dial-value">0</div>
+                        </div>
+                        <label>Oct</label>
+                    </div>
+                    <div class="dial-wrapper">
+                        <div class="dial" data-param="osc3_semi" data-min="-12" data-max="12" data-step="1">
+                            <div class="dial-knob"></div>
+                            <div class="dial-value">0</div>
+                        </div>
+                        <label>Semi</label>
+                    </div>
+                    <div class="dial-wrapper">
+                        <div class="dial" data-param="osc3_detune" data-min="-50" data-max="50" data-step="1">
+                            <div class="dial-knob"></div>
+                            <div class="dial-value">0</div>
+                        </div>
+                        <label>Fine</label>
+                    </div>
+                    <div class="dial-wrapper">
+                        <div class="dial" data-param="osc3_gain" data-min="0" data-max="1" data-step="0.01">
+                            <div class="dial-knob"></div>
+                            <div class="dial-value">0.5</div>
+                        </div>
+                        <label>Level</label>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Filter & Filter ADSR -->
+            <section class="panel filter-panel">
+                <h2>Filter</h2>
+                <div class="controls-col">
+                    <div class="control-group slider-group">
+                        <label>Type</label>
+                        <select id="filter-type" data-param="filterType">
+                            <option value="lowpass">Lowpass</option>
+                            <option value="highpass">Highpass</option>
+                            <option value="bandpass">Bandpass</option>
+                            <option value="notch">Notch</option>
+                        </select>
+                    </div>
+                    <div class="control-group slider-group">
+                        <label>Cutoff</label>
+                        <input type="range" data-param="filterFreq" min="20" max="20000" step="1">
+                        <span class="value-display" id="disp-filterFreq">2000 Hz</span>
+                    </div>
+                    <div class="control-group slider-group">
+                        <label>Resonance</label>
+                        <input type="range" data-param="filterQ" min="0" max="20" step="0.1">
+                        <span class="value-display" id="disp-filterQ">1</span>
+                    </div>
+                    
+                    <h3>Filter Envelope</h3>
+                     <div class="control-group slider-group">
+                        <label>Env Amount</label>
+                        <input type="range" data-param="filterEnvAmt" min="-5000" max="5000" step="10">
+                        <span class="value-display" id="disp-filterEnvAmt">0</span>
+                    </div>
+                    <div class="adsr-row">
+                        <div class="slider-vert">
+                            <input type="range" orient="vertical" data-param="f_attack" min="0" max="2" step="0.01">
+                            <label>A</label>
+                        </div>
+                        <div class="slider-vert">
+                            <input type="range" orient="vertical" data-param="f_decay" min="0" max="2" step="0.01">
+                            <label>D</label>
+                        </div>
+                        <div class="slider-vert">
+                            <input type="range" orient="vertical" data-param="f_sustain" min="0" max="1" step="0.01">
+                            <label>S</label>
+                        </div>
+                        <div class="slider-vert">
+                            <input type="range" orient="vertical" data-param="f_release" min="0" max="3" step="0.01">
+                            <label>R</label>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Amp ADSR & Output -->
+            <section class="panel output-panel">
+                <h2>Amp & FX</h2>
+                <h3>Amp Envelope</h3>
+                <div class="adsr-row">
+                    <div class="slider-vert">
+                        <input type="range" orient="vertical" data-param="attack" min="0" max="2" step="0.01">
+                        <label>A</label>
+                    </div>
+                    <div class="slider-vert">
+                        <input type="range" orient="vertical" data-param="decay" min="0" max="2" step="0.01">
+                        <label>D</label>
+                    </div>
+                    <div class="slider-vert">
+                        <input type="range" orient="vertical" data-param="sustain" min="0" max="1" step="0.01">
+                        <label>S</label>
+                    </div>
+                    <div class="slider-vert">
+                        <input type="range" orient="vertical" data-param="release" min="0" max="3" step="0.01">
+                        <label>R</label>
+                    </div>
+                </div>
+
+                <h3>Tremolo</h3>
+                <div class="controls-row small-dials">
+                    <div class="dial-wrapper">
+                        <div class="dial" data-param="tremRate" data-min="0.1" data-max="20" data-step="0.1">
+                            <div class="dial-knob"></div>
+                            <div class="dial-value">0</div>
+                        </div>
+                        <label>Rate</label>
+                    </div>
+                    <div class="dial-wrapper">
+                        <div class="dial" data-param="tremDepth" data-min="0" data-max="1" data-step="0.01">
+                            <div class="dial-knob"></div>
+                            <div class="dial-value">0</div>
+                        </div>
+                        <label>Depth</label>
+                    </div>
+                </div>
+
+                <h3>Master</h3>
+                 <div class="controls-row small-dials">
+                    <div class="dial-wrapper">
+                        <div class="dial" data-param="pan" data-min="-1" data-max="1" data-step="0.05">
+                            <div class="dial-knob"></div>
+                            <div class="dial-value">0</div>
+                        </div>
+                        <label>Pan</label>
+                    </div>
+                    <div class="control-group slider-group">
+                         <label>Vol</label>
+                        <input type="range" data-param="volume" min="0" max="1" step="0.01">
+                    </div>
+                 </div>
+            </section>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

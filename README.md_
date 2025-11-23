@@ -1,0 +1,20 @@
+# Web Audio Oscillator
+
+A simple synthesizer oscillator built with the Web Audio API, Vanilla JS, HTML, and CSS.
+
+## Features
+- **Oscillator Controls**: Waveform (Sine, Square, Sawtooth, Triangle), Octave, Semi-tone, Fine Tune.
+- **Filter Controls**: Type (Lowpass, Highpass, Bandpass, Notch), Cutoff Frequency, Resonance (Q).
+- **Envelope (ADSR)**: Attack, Decay, Sustain, Release.
+- **Output**: Master Volume, Pan.
+- **State Persistence**: Settings are saved automatically to LocalStorage.
+- **Randomizer**: Randomize all settings with one click.
+
+## How to Run
+Simply open `index.html` in a modern web browser.
+
+## Controls
+- **Dials**: Click and drag up/down to change values.
+- **Sliders**: Drag to adjust.
+- **Play Note**: Click and hold to play a note (gates the envelope).
+
